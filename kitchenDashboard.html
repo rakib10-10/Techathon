@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Kitchen Dashboard - Bistro 92</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      font-family: 'Poppins', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(to right, #f8fafc, #e2e8f0);
+    }
+    #notification {
+      width: 60vw;
+      left: 20vw;
+      top: 2rem;
+      text-align: center;
+      font-size: 1.2rem;
+      z-index: 50;
+    }
+    .dashboard-card {
+      background: linear-gradient(to bottom right, #ffffff, #f1f5f9);
+      border: 1px solid #e2e8f0;
+      transition: all 0.3s ease;
+      z-index: 10;
+    }
+    .dashboard-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0px 10px 15px rgba(0,0,0,0.1);
+    }
+    table th {
+      background: #cbd5e1;
+      text-transform: uppercase;
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+    table td {
+      font-size: 0.95rem;
+    }
+  </style>
+</head>
+<body class="min-h-screen p-4">
+
+  <audio id="notif-sound" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" preload="auto"></audio>
+  <div id="notification" class="hidden fixed bg-green-500 text-white px-6 py-3 rounded shadow-lg">🔔 New Order Received!</div>
+
+  <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+    <div class="dashboard-card p-6 rounded-lg shadow text-center">
+      <h2 class="text-lg font-bold">Total Orders</h2>
+      <p id="total-orders" class="text-4xl mt-2 font-semibold">0</p>
+    </div>
+    <div class="dashboard-card p-6 rounded-lg shadow text-center">
+      <h2 class="text-lg font-bold">Processing Orders</h2>
+      <p id="processing-orders" class="text-4xl mt-2 font-semibold">0</p>
+    </div>
+    <div class="dashboard-card p-6 rounded-lg shadow text-center">
+      <h2 class="text-lg font-bold">Avg Delivery Time</h2>
+      <p id="avg-delivery" class="text-4xl mt-2 font-semibold">0 min</p>
+    </div>
+    <div class="dashboard-card p-6 rounded-lg shadow text-center">
+      <h2 class="text-lg font-bold">Total Sale</h2>
+      <p id="total-sale" class="text-4xl mt-2 font-semibold">৳0</p>
+    </div>
+  </div>
+
+  <div class="bg-white p-6 rounded-lg shadow">
+    <h2 class="text-2xl font-bold mb-4">Order Details</h2>
+    <div class="overflow-x-auto">
+      <table class="min-w-full table-auto">
+        <thead>
+          <tr>
+            <th class="px-4 py-2">Table No</th>
+            <th class="px-4 py-2">Items</th>
+            <th class="px-4 py-2">Amount (৳)</th>
+            <th class="px-4 py-2">Order Time</th>
+            <th class="px-4 py-2">Status</th>
+          </tr>
+        </thead>
+        <tbody id="order-list"></tbody>
+      </table>
+    </div>
+  </div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.10.0/firebase-app.js";
+  import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.10.0/firebase-database.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyAoBvwpmvac8fXU_yxZHEhbc-X7TzgIge8",
+    authDomain: "restaurant-6c771.firebaseapp.com",
+    projectId: "restaurant-6c771",
+    storageBucket: "restaurant-6c771.appspot.com",
+    messagingSenderId: "101518907827",
+    appId: "1:101518907827:web:ae772d7bc277aafcb053c6",
+    measurementId: "G-5K0Q5B9Y3S"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db = getDatabase(app);
+  const ordersRef = ref(db, "orders");
+
+  const orderList = document.getElementById('order-list');
+  const totalOrdersEl = document.getElementById('total-orders');
+  const processingOrdersEl = document.getElementById('processing-orders');
+  const avgDeliveryEl = document.getElementById('avg-delivery');
+  const totalSaleEl = document.getElementById('total-sale');
+  const notif = document.getElementById('notification');
+  const sound = document.getElementById('notif-sound');
+
+  let previousOrderCount = 0;
+
+  onValue(ordersRef, (snapshot) => {
+    const orders = [];
+    orderList.innerHTML = "";
+    let totalSalesToday = 0;
+    let deliveryTimes = [];
+    const todayDate = new Date().toISOString().split('T')[0];
+
+    snapshot.forEach((childSnapshot) => {
+      const order = childSnapshot.val();
+      orders.push(order);
+
+      const row = `<tr class="border-t hover:bg-gray-100 transition">
+        <td class="px-4 py-2 text-center">${order.tableNo}</td>
+        <td class="px-4 py-2 text-center">${order.items}</td>
+        <td class="px-4 py-2 text-center">${order.amount ? order.amount : 0}</td>
+        <td class="px-4 py-2 text-center">${order.orderTime}</td>
+        <td class="px-4 py-2 text-center">${order.status}</td>
+      </tr>`;
+      orderList.innerHTML += row;
+
+      if (order.status === "Completed" && order.amount) {
+        totalSalesToday += parseFloat(order.amount);
+      }
+
+      if (order.status === "Completed" && order.orderTime && order.deliveredTime) {
+        const today = new Date().toISOString().split('T')[0];
+        const start = new Date(`${today} ${order.orderTime}`);
+        const end = new Date(`${today} ${order.deliveredTime}`);
+        if (!isNaN(start) && !isNaN(end)) {
+          const duration = (end - start) / 60000;
+          if (duration >= 0) deliveryTimes.push(duration);
+        }
+      }
+    });
+
+    const totalOrders = orders.length;
+    const processingOrders = orders.filter(o => o.status === "Processing").length;
+    const avgDeliveryTime = deliveryTimes.length ? (deliveryTimes.reduce((a, b) => a + b, 0) / deliveryTimes.length) : 0;
+
+    totalOrdersEl.innerText = totalOrders;
+    processingOrdersEl.innerText = processingOrders;
+    totalSaleEl.innerText = `৳${totalSalesToday.toFixed(0)}`;
+    avgDeliveryEl.innerText = `${avgDeliveryTime.toFixed(0)} min`;
+
+    if (totalOrders > previousOrderCount) showNotification();
+    previousOrderCount = totalOrders;
+  });
+
+  function showNotification() {
+    notif.classList.remove('hidden');
+    sound.play();
+    setTimeout(() => notif.classList.add('hidden'), 3000);
+  }
+</script>
+</body>
+</html>
